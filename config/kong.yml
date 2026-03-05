@@ -1,0 +1,195 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: asr-service
+    url: http://telco-asr-service:8001
+    connect_timeout: 5000
+    write_timeout: 180000
+    read_timeout: 180000
+    routes:
+      - name: asr-rest
+        paths: ["/api/v1/asr"]
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+      - name: asr-ws
+        paths: ["/api/v1/asr/stream"]
+        strip_path: false
+        protocols: [http, https]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
+      - name: jwt
+        config:
+          secret_is_base64: false
+
+  - name: intelligence-service
+    url: http://telco-intelligence-service:8002
+    connect_timeout: 3000
+    write_timeout: 30000
+    read_timeout: 30000
+    routes:
+      - name: intelligence
+        paths: ["/api/v1/intelligence"]
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 500
+          policy: local
+      - name: jwt
+        config:
+          secret_is_base64: false
+      - name: response-transformer
+        config:
+          add:
+            headers: ["X-Powered-By: telco-intelligence"]
+
+  - name: routing-service
+    url: http://telco-routing-service:8004
+    connect_timeout: 2000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: routing
+        paths: ["/api/v1/routing"]
+        strip_path: false
+        methods: [GET, POST, PUT, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 1000
+          policy: local
+      - name: jwt
+        config:
+          secret_is_base64: false
+
+  - name: recording-service
+    url: http://telco-recording-service:8005
+    connect_timeout: 5000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: recording
+        paths: ["/api/v1/recordings"]
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: local
+      - name: jwt
+        config:
+          secret_is_base64: false
+
+  - name: cti-service
+    url: http://telco-cti-service:8006
+    connect_timeout: 3000
+    write_timeout: 3600000
+    read_timeout: 3600000
+    routes:
+      - name: cti-rest
+        paths: ["/api/v1/cti"]
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+      - name: cti-ws
+        paths: ["/ws/agents"]
+        strip_path: false
+        protocols: [http, https]
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+
+  - name: analytics-service
+    url: http://telco-analytics-service:8008
+    connect_timeout: 3000
+    write_timeout: 30000
+    read_timeout: 30000
+    routes:
+      - name: analytics
+        paths: ["/api/v1/analytics"]
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
+      - name: jwt
+        config:
+          secret_is_base64: false
+      - name: response-transformer
+        config:
+          add:
+            headers: ["Cache-Control: no-store"]
+
+  - name: orchestrator
+    url: http://telco-call-orchestrator:8080
+    connect_timeout: 2000
+    write_timeout: 10000
+    read_timeout: 10000
+    routes:
+      - name: orchestrator-health
+        paths: ["/api/v1/orchestrator"]
+        strip_path: false
+        methods: [GET, OPTIONS]
+    plugins:
+      - name: ip-restriction
+        config:
+          allow: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+      - name: key-auth
+        config:
+          key_names: ["X-Internal-Token"]
+
+plugins:
+  - name: cors
+    config:
+      origins: ["*"]
+      methods: [GET, POST, PUT, DELETE, OPTIONS, PATCH]
+      headers: [Authorization, Content-Type, X-Requested-With, X-Call-ID]
+      max_age: 3600
+
+  - name: correlation-id
+    config:
+      header_name: X-Call-ID
+      generator: uuid
+      echo_downstream: true
+
+  - name: rate-limiting
+    config:
+      second: 50
+      minute: 2000
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
+
+  - name: prometheus
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  - name: jwt
+    enabled: false
+
+  - name: bot-detection
+    config:
+      deny: ["(libwww-perl)", "(Python-urllib)"]
+
+consumers:
+  - username: sip-gateway
+    keyauth_credentials:
+      - key: "dev-sip-internal-token"
+  - username: call-orchestrator
+    keyauth_credentials:
+      - key: "dev-orch-internal-token"
+  - username: external-api
+    jwt_secrets:
+      - algorithm: HS256
+        secret: "dev-jwt-secret-for-local-testing-only"

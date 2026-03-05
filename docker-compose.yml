@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  kong:
+    image: kong:3.5
+    container_name: telco-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+      KONG_ADMIN_LISTEN: "127.0.0.1:8001"
+      KONG_STATUS_LISTEN: "0.0.0.0:8100"
+      KONG_LOG_LEVEL: warn
+      KONG_NGINX_WORKER_PROCESSES: auto
+      KONG_UPSTREAM_KEEPALIVE_POOL_SIZE: 512
+      KONG_PLUGINS: bundled,prometheus
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_TRUSTED_IPS: "0.0.0.0/0,::/0"
+    volumes:
+      - ./config/kong.yml:/etc/kong/kong.yml:ro
+      - ./certs:/etc/ssl/kong:ro
+    ports:
+      - "80:8000"
+      - "443:8443"
+      - "8100:8100"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
